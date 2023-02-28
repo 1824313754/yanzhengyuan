@@ -19,11 +19,19 @@ public abstract class AbstractFtpFileProcessor<T> {
     //获取当前时间戳，转为YYYY-MM-DD HH:MM:SS格式
     private String date = new DateTime().toString("yyyy-MM-dd HH:mm:ss");
 
-    public AbstractFtpFileProcessor(String mysqlUrl, String mysqlUser, String mysqlPassword) throws SQLException {
+    public AbstractFtpFileProcessor(Properties config) throws SQLException {
+        String mysqlUrl = config.getProperty("mysql.url");
+        String mysqlUser = config.getProperty("mysql.user");
+        String mysqlPassword = config.getProperty("mysql.password");
         connection = DriverManager.getConnection(mysqlUrl, mysqlUser, mysqlPassword);
     }
 
-    public void process(String server, int port, String username, String password, String remoteFilePath, String fileType) throws Exception {
+    public void process(Properties config, String fileType) throws Exception {
+        String server = config.getProperty("ftp.server");
+        int port = Integer.parseInt(config.getProperty("ftp.port"));
+        String username = config.getProperty("ftp.username");
+        String password = config.getProperty("ftp.password");
+        String remoteFilePath= config.getProperty("ftp.remoteFilePath");
         ftpClient = new FTPClient();
         ftpClient.connect(server, port);
         ftpClient.login(username, password);
@@ -32,6 +40,7 @@ public abstract class AbstractFtpFileProcessor<T> {
 
         try {
             ftpClient.changeWorkingDirectory(new String(remoteFilePath.getBytes(StandardCharsets.UTF_8), "iso-8859-1"));
+
             List<String> filePaths = listFilesAndDirectories();
 
             for (String filePath : filePaths) {
