@@ -137,6 +137,16 @@
       <artifactId>HikariCP</artifactId>
       <version>4.0.3</version>
     </dependency>
+    <dependency>
+      <groupId>ru.yandex.clickhouse</groupId>
+      <artifactId>clickhouse-jdbc</artifactId>
+      <version>0.2.6</version>
+    </dependency>
+    <dependency>
+      <groupId>org.codehaus.janino</groupId>
+      <artifactId>janino</artifactId>
+      <version>3.0.16</version>
+    </dependency>
 
 
   </dependencies>

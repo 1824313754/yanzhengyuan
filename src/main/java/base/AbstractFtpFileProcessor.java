@@ -14,7 +14,7 @@ import java.util.*;
 
 public abstract class AbstractFtpFileProcessor<T> {
     protected FTPClient ftpClient;
-    private Connection connection;
+    protected Connection connection;
     private Set<String> processedFileSet = new HashSet<>();
     //文件大小
     private long fileSize;
@@ -39,17 +39,18 @@ public abstract class AbstractFtpFileProcessor<T> {
         ftpClient.login(username, password);
         ftpClient.setFileType(FTPClient.BINARY_FILE_TYPE);
         ftpClient.setControlEncoding(StandardCharsets.UTF_8.name());
-
+        String filePathName = null;
         try {
             ftpClient.changeWorkingDirectory(new String(remoteFilePath.getBytes(StandardCharsets.UTF_8), "iso-8859-1"));
 
             List<String> filePaths = listFilesAndDirectories();
 
             for (String filePath : filePaths) {
+                filePathName = filePath;
                 String ext = filePath.substring(filePath.lastIndexOf(".") + 1).toLowerCase();
                 if (ext.equals(fileType)) {
                     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-                    // 获取文件大小
+
                     boolean success = ftpClient.retrieveFile(new String(filePath.getBytes(StandardCharsets.UTF_8), "iso-8859-1"), outputStream);
                     if (success) {
                         byte[] fileData = outputStream.toByteArray();
@@ -59,44 +60,47 @@ public abstract class AbstractFtpFileProcessor<T> {
                         T data = dataReader.read(new ByteArrayInputStream(fileData));
                         doProcess(data);
                         //处理成功后存入mysql
-                        insertProcessedFilePath(filePath);
+                        insertProcessedFilePath(filePath,true);
                     }
                     outputStream.close();
                 }
             }
 
-            insertUnprocessedFilePaths(filePaths);
+        } catch (Exception e) {
+            insertProcessedFilePath(filePathName,true);
         } finally {
             ftpClient.disconnect();
             connection.close();
         }
     }
 
-    private void insertProcessedFilePath(String filePath) throws SQLException {
-        String sql = "INSERT INTO yanzhen_pathprocess (path_name, flag,processtime,size) VALUES (?, true,?,?)";
+    private void insertProcessedFilePath(String filePath,Boolean flag) throws SQLException {
+        String sql = "INSERT INTO yanzhen_pathprocess (path_name,processtime,size,flag) VALUES (?, ?,?,?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, filePath);
             statement.setString(2, date);
             statement.setLong(3, fileSize);
+            statement.setBoolean(4,flag);
             statement.executeUpdate();
             processedFileSet.add(filePath);
         }
     }
 
-    private void insertUnprocessedFilePaths(List<String> filePaths) throws SQLException {
-        Set<String> unprocessedFileSet = new HashSet<>(filePaths);
-        unprocessedFileSet.removeAll(processedFileSet);
-        if (!unprocessedFileSet.isEmpty()) {
-            String sql = "INSERT INTO yanzhen_pathprocess (path_name, flag,processtime) VALUES (?, false,?)";
-            try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                for (String filePath : unprocessedFileSet) {
-                    statement.setString(1, filePath);
-                    statement.setString(2, date);
-                    statement.executeUpdate();
-                }
-            }
-        }
-    }
+//    private void insertUnprocessedFilePaths(List<String> filePaths) throws SQLException {
+//        Set<String> unprocessedFileSet = new HashSet<>(filePaths);
+//        unprocessedFileSet.removeAll(processedFileSet);
+//        if (!unprocessedFileSet.isEmpty()) {
+//            String sql = "INSERT INTO yanzhen_pathprocess (path_name, flag,processtime,size) VALUES (?, false,?,?)";
+//            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+//                for (String filePath : unprocessedFileSet) {
+//                    statement.setString(1, filePath);
+//                    statement.setString(2, date);
+//                    statement.setLong(3, fileSize);
+//                    statement.executeUpdate();
+//                }
+//            }
+//        }
+//    }
 
     protected List<String> listFilesAndDirectories() throws IOException, SQLException {
         List<String> filesAndDirectories = new ArrayList<>();
@@ -126,7 +130,7 @@ public abstract class AbstractFtpFileProcessor<T> {
             FTPFile[] files = ftpClient.listFiles(new String(path.getBytes(StandardCharsets.UTF_8), "iso-8859-1"));
             for (FTPFile file : files) {
                 String subPath = path + "/" + file.getName();
-                if (file.isDirectory() && !file.getName().equals(".") && !file.getName().equals("..")) {
+                if (file.isDirectory()) {
                     stack.push(subPath);
 //                    filesAndDirectories.add(subPath);
                 } else if (file.isFile() && !processedFileSet.contains(subPath)) {
@@ -136,6 +140,5 @@ public abstract class AbstractFtpFileProcessor<T> {
         }
         return filesAndDirectories;
     }
-
     protected abstract void doProcess(T data) throws Exception;
 }
