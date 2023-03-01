@@ -26,7 +26,7 @@ public class CsvDataReader implements DataReader<Iterator<JSONObject>> {
                 for (int i = 0; i < headers.length; i++) {
                     String value = i < values.length ? values[i] : null; // 防止数组越界，缺失值用 null 表示
                     headers[i] = headers[i].replaceAll("\\(.*\\)", "");
-                    jsonObject.put(headers[i], values);
+                    jsonObject.put(headers[i], value);
                 }
                 resultList.add(jsonObject);
             }

@@ -127,7 +127,7 @@ public abstract class AbstractFtpFileProcessor<T> {
 
         while (!stack.isEmpty()) {
             String path = stack.pop();
-            FTPFile[] files = ftpClient.listFiles(new String(path.getBytes(StandardCharsets.UTF_8), "iso-8859-1"));
+            FTPFile[] files = ftpClient.mlistDir(new String(path.getBytes(StandardCharsets.UTF_8), "iso-8859-1"));
             for (FTPFile file : files) {
                 String subPath = path + "/" + file.getName();
                 if (file.isDirectory()) {
