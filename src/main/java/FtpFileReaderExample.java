@@ -17,9 +17,7 @@ public class FtpFileReaderExample {
         config.load(reader);
         MyFtpFileProcessor processor = new MyFtpFileProcessor(config);
         processor.process(config, "csv");
-        List<JSONObject> processedData = processor.getResult();
-        //打印处理后的数据
-        processedData.forEach(System.out::println);
+
     }
 
 }

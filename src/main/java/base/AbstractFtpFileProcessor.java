@@ -16,6 +16,8 @@ public abstract class AbstractFtpFileProcessor<T> {
     protected FTPClient ftpClient;
     private Connection connection;
     private Set<String> processedFileSet = new HashSet<>();
+    //文件大小
+    private long fileSize;
     //获取当前时间戳，转为YYYY-MM-DD HH:MM:SS格式
     private String date = new DateTime().toString("yyyy-MM-dd HH:mm:ss");
 
@@ -47,9 +49,11 @@ public abstract class AbstractFtpFileProcessor<T> {
                 String ext = filePath.substring(filePath.lastIndexOf(".") + 1).toLowerCase();
                 if (ext.equals(fileType)) {
                     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+                    // 获取文件大小
                     boolean success = ftpClient.retrieveFile(new String(filePath.getBytes(StandardCharsets.UTF_8), "iso-8859-1"), outputStream);
                     if (success) {
                         byte[] fileData = outputStream.toByteArray();
+                        fileSize = fileData.length;
                         // 根据文件类型获取文件读取器对象
                         DataReader<T> dataReader = FileReaderFactory.getFileReader(ext);
                         T data = dataReader.read(new ByteArrayInputStream(fileData));
@@ -69,10 +73,11 @@ public abstract class AbstractFtpFileProcessor<T> {
     }
 
     private void insertProcessedFilePath(String filePath) throws SQLException {
-        String sql = "INSERT INTO yanzhen_pathprocess (path_name, flag,processtime) VALUES (?, true,?)";
+        String sql = "INSERT INTO yanzhen_pathprocess (path_name, flag,processtime,size) VALUES (?, true,?,?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, filePath);
             statement.setString(2, date);
+            statement.setLong(3, fileSize);
             statement.executeUpdate();
             processedFileSet.add(filePath);
         }

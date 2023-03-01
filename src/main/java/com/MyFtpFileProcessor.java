@@ -5,15 +5,13 @@ import com.alibaba.fastjson.JSONObject;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
 
-public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject>> {
-    public static final String SERVER = "10.2.128.27";
-    public static final int PORT = 2121;
-    public static final String USERNAME = "2021112506";
-    public static final String PASSWORD = "ftp@2021112506";
-    public static final String REMOTE_FILE_PATH = "/数据分析平台数据库/BH 电性能数据/PACK测试/容量和能量/DJ2136/BHEPV-20220609016/PK202209009/-20℃";
+public class MyFtpFileProcessor extends AbstractFtpFileProcessor<Iterator<JSONObject>> {
+    private int batchSize = 1000; // 每批处理的文件数量
+    private int batchCount = 0; // 当前批次处理的文件数量
     private List<JSONObject> result = new ArrayList<>();
 
     public MyFtpFileProcessor(Properties config) throws SQLException {
@@ -21,13 +19,25 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
     }
 
     @Override
-    protected void doProcess(List<JSONObject> data) throws Exception {
-        // Other logic to process data
-        result.addAll(data);
+    protected void doProcess(Iterator<JSONObject> data) throws Exception {
+        while (data.hasNext()) {
+            JSONObject jsonObject = data.next();
+            System.out.println(jsonObject.toJSONString());
+            // 处理逻辑
+            result.add(jsonObject);
+            batchCount++;
+            if (batchCount >= batchSize) {
+                saveBatch(); // 每处理完一批文件就保存一次结果
+                batchCount = 0;
+            }
+        }
     }
 
-    public List<JSONObject> getResult() {
-        return result;
+    private void saveBatch() throws Exception {
+        // 可以将数据写入数据库、文件系统等
+        System.out.println("Saving batch: " + result.size());
+        result.clear();
     }
 }
+
 

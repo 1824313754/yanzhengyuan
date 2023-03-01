@@ -7,15 +7,16 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
-public class CsvDataReader implements DataReader<List<JSONObject>> {
+public class CsvDataReader implements DataReader<Iterator<JSONObject>> {
     @Override
-    public List<JSONObject> read(InputStream inputStream) throws Exception {
-        List<JSONObject> resultList = new ArrayList<>();
+    public Iterator<JSONObject> read(InputStream inputStream) throws Exception {
         BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, "GBK"));
         String line;
         String[] headers = null;
+        List<JSONObject> resultList = new ArrayList<>();
         while ((line = reader.readLine()) != null) {
             if (headers == null) {
                 headers = line.split(",");
@@ -29,6 +30,6 @@ public class CsvDataReader implements DataReader<List<JSONObject>> {
             }
         }
         reader.close();
-        return resultList;
+        return resultList.iterator();
     }
 }
