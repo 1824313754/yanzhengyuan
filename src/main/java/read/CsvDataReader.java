@@ -23,6 +23,10 @@ public class CsvDataReader implements DataReader<Iterator<JSONObject>> {
             } else {
                 String[] values = line.split(",");
                 JSONObject jsonObject = new JSONObject();
+                if (values.length > headers.length) {
+                    System.out.println("文件可能被加密，无法读取");
+                    throw new Exception("文件可能被加密，无法读取");
+                }
                 for (int i = 0; i < headers.length; i++) {
                     String value = i < values.length ? values[i] : null; // 防止数组越界，缺失值用 null 表示
                     headers[i] = headers[i].replaceAll("\\(.*\\)", "");

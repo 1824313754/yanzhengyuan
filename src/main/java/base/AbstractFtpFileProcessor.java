@@ -2,6 +2,7 @@ package base;
 import com.FileReaderFactory;
 import org.apache.commons.net.ftp.FTPClient;
 import org.apache.commons.net.ftp.FTPFile;
+import org.apache.commons.net.ftp.FTPFileFilter;
 import org.joda.time.DateTime;
 
 import java.io.ByteArrayInputStream;
@@ -16,6 +17,9 @@ public abstract class AbstractFtpFileProcessor<T> {
     protected FTPClient ftpClient;
     protected Connection connection;
     private Set<String> processedFileSet = new HashSet<>();
+    //定义一个数组，存放csv、xls、xlsx
+    private String[] fileType = {"csv", "xls", "xlsx"};
+
     //文件大小
     private long fileSize;
     //获取当前时间戳，转为YYYY-MM-DD HH:MM:SS格式
@@ -39,18 +43,18 @@ public abstract class AbstractFtpFileProcessor<T> {
         ftpClient.login(username, password);
         ftpClient.setFileType(FTPClient.BINARY_FILE_TYPE);
         ftpClient.setControlEncoding(StandardCharsets.UTF_8.name());
-        String filePathName = null;
+        //设置被动模式
+        ftpClient.enterLocalPassiveMode();
         try {
             ftpClient.changeWorkingDirectory(new String(remoteFilePath.getBytes(StandardCharsets.UTF_8), "iso-8859-1"));
 
             List<String> filePaths = listFilesAndDirectories();
 
             for (String filePath : filePaths) {
-                filePathName = filePath;
                 String ext = filePath.substring(filePath.lastIndexOf(".") + 1).toLowerCase();
                 if (ext.equals(fileType)) {
                     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-
+                    try {
                     boolean success = ftpClient.retrieveFile(new String(filePath.getBytes(StandardCharsets.UTF_8), "iso-8859-1"), outputStream);
                     if (success) {
                         byte[] fileData = outputStream.toByteArray();
@@ -62,12 +66,12 @@ public abstract class AbstractFtpFileProcessor<T> {
                         //处理成功后存入mysql
                         insertProcessedFilePath(filePath,true);
                     }
+                    } catch (Exception e) {
+                        insertProcessedFilePath(filePath,false);
+                    }
                     outputStream.close();
                 }
             }
-
-        } catch (Exception e) {
-            insertProcessedFilePath(filePathName,true);
         } finally {
             ftpClient.disconnect();
             connection.close();
@@ -127,13 +131,23 @@ public abstract class AbstractFtpFileProcessor<T> {
 
         while (!stack.isEmpty()) {
             String path = stack.pop();
-            FTPFile[] files = ftpClient.mlistDir(new String(path.getBytes(StandardCharsets.UTF_8), "iso-8859-1"));
+            FTPFile[] files = ftpClient.mlistDir(new String(path.getBytes(StandardCharsets.UTF_8), "iso-8859-1"), new FTPFileFilter() {
+                @Override
+                public boolean accept(FTPFile file) {
+                    String ext = file.getName().substring(file.getName().lastIndexOf(".") + 1).toLowerCase();
+                    if (Arrays.asList(fileType).contains(ext)|| file.isDirectory()) {
+                        return true;
+                    }
+                    return false;
+                }
+            });
             for (FTPFile file : files) {
                 String subPath = path + "/" + file.getName();
                 if (file.isDirectory()) {
                     stack.push(subPath);
 //                    filesAndDirectories.add(subPath);
                 } else if (file.isFile() && !processedFileSet.contains(subPath)) {
+                    System.out.println(subPath);
                     filesAndDirectories.add(subPath);
                 }
             }
