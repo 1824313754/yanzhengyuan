@@ -19,8 +19,6 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
     Set<String> configDataKey = new HashSet<>();
     //所有公共的配置信息 (设备->(设备字段->标准化字段)))
     Map<String, Map<String, String>> configData = new HashMap<>();
-    //定义一个标准化json
-
 
     @Override
     protected void doProcess(List<JSONObject> data, String path) throws Exception {
@@ -43,10 +41,13 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
         if(configDataKey!=null){
             //获取第一个值
             String first = configDataKey.stream().findFirst().get();
+            //获取自定义的配置信息
+            Map<String, String> customConfig = getStandardConfigData(configDataKey);
             //获取第一个值对应的map
             Map<String, String> firstMap = configData.get(first);
             for (JSONObject jsonObject : data) {
                 JSONObject standardJson = new JSONObject();
+                //公共字段映射
                 for (Map.Entry<String, String> entry : firstMap.entrySet()) {
                     //获取标准化字段公共部分
                     String standardField = entry.getValue();
@@ -57,8 +58,6 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
                     //将标准化字段和设备字段对应的值放入标准化json中
                     standardJson.put(standardField, equipmentFieldValue);
                 }
-                //获取自定义的配置信息
-                Map<String, String> customConfig = getStandardConfigData(configDataKey);
                 //遍历自定义的配置信息，将自定义的配置信息放入标准化json中
                 for (Map.Entry<String, String> entry : customConfig.entrySet()) {
                     //获取标准化字段
@@ -66,16 +65,16 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
                     //获取设备字段
                     String equipmentField = entry.getKey();
                     //获取设备字段对应的值
-                    String equipmentFieldValue = jsonObject.getString(equipmentField);
-                    //将标准化字段和设备字段对应的值放入标准化json中
-                    standardJson.put(standardField, equipmentFieldValue);
+                    Object equipmentFieldValue = jsonObject.get(equipmentField);
+                    //将标准化字段和设备字段对应的值放入标准化json中,因为会有多个standardField重复可能会有空值覆盖之前的结果，只需要添加一次有值的即可
+                    if(equipmentFieldValue!=null) {
+                        standardJson.put(standardField, equipmentFieldValue);
+                    }
                 }
                 System.out.println(standardJson);
             }
-
         }
-
-
+        configDataKey.clear();
 
     }
 

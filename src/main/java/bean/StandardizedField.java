@@ -33,4 +33,11 @@ public class StandardizedField {
     private String batAvgCelVol;
     private String batAvgTemp;
     private String diffVol;
+    //定义一个温度数组
+    private Float[] temperature;
+    //定义一个电压数组
+    private Float[] voltageArray;
+
+
+
 }
