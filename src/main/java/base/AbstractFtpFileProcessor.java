@@ -20,10 +20,6 @@ public abstract class AbstractFtpFileProcessor<T> {
     private Set<String> processedFileSet = new HashSet<>();
     //定义一个数组，存放csv、xls、xlsx
     private String[] fileType = {"csv", "xls", "xlsx"};
-    //所有公共的配置信息
-    Map<String, Map<String, String>> configData = new HashMap<>();
-    //自定义的配置信息
-    Map<String, Map<String, String>> resultMap = new HashMap<>();
     //文件大小
     private long fileSize;
     //获取当前时间戳，转为YYYY-MM-DD HH:MM:SS格式
@@ -34,7 +30,6 @@ public abstract class AbstractFtpFileProcessor<T> {
         String mysqlUser = config.getProperty("mysql.user");
         String mysqlPassword = config.getProperty("mysql.password");
         connection = DriverManager.getConnection(mysqlUrl, mysqlUser, mysqlPassword);
-        getStandardConfigData();
     }
 
     public void process(Properties config, String fileType) throws Exception {
@@ -66,7 +61,7 @@ public abstract class AbstractFtpFileProcessor<T> {
                             // 根据文件类型获取文件读取器对象
                             DataReader<T> dataReader = FileReaderFactory.getFileReader(ext);
                             T data = dataReader.read(new ByteArrayInputStream(fileData));
-                            doProcess(data, filePath, configData);
+                            doProcess(data, filePath);
                             //处理成功后存入mysql
                             insertProcessedFilePath(filePath, true);
                         }
@@ -93,22 +88,6 @@ public abstract class AbstractFtpFileProcessor<T> {
             processedFileSet.add(filePath);
         }
     }
-
-//    private void insertUnprocessedFilePaths(List<String> filePaths) throws SQLException {
-//        Set<String> unprocessedFileSet = new HashSet<>(filePaths);
-//        unprocessedFileSet.removeAll(processedFileSet);
-//        if (!unprocessedFileSet.isEmpty()) {
-//            String sql = "INSERT INTO yanzhen_pathprocess (path_name, flag,processtime,size) VALUES (?, false,?,?)";
-//            try (PreparedStatement statement = connection.prepareStatement(sql)) {
-//                for (String filePath : unprocessedFileSet) {
-//                    statement.setString(1, filePath);
-//                    statement.setString(2, date);
-//                    statement.setLong(3, fileSize);
-//                    statement.executeUpdate();
-//                }
-//            }
-//        }
-//    }
 
     protected List<String> listFilesAndDirectories() throws IOException, SQLException {
         List<String> filesAndDirectories = new ArrayList<>();
@@ -151,7 +130,6 @@ public abstract class AbstractFtpFileProcessor<T> {
                     stack.push(subPath);
 //                    filesAndDirectories.add(subPath);
                 } else if (file.isFile() && !processedFileSet.contains(subPath)) {
-//                    System.out.println(subPath);
                     filesAndDirectories.add(subPath);
                 }
             }
@@ -159,77 +137,7 @@ public abstract class AbstractFtpFileProcessor<T> {
         return filesAndDirectories;
     }
 
-//    public void getConfigData() throws SQLException {
-//        String query = "SELECT * FROM yanzheng_config ";
-//
-//        try (PreparedStatement preparedStatement = connection.prepareStatement(query);
-//             ResultSet resultSet = preparedStatement.executeQuery()) {
-//
-//            ResultSetMetaData metaData = resultSet.getMetaData();
-//            int columnCount = metaData.getColumnCount();
-//
-//            while (resultSet.next()) {
-//                String[] row = new String[columnCount];
-//
-//                for (int i = 1; i <= columnCount; i++) {
-//                    row[i - 1] = resultSet.getString(i);
-//                }
-//                configData.add(row);
-//            }
-//        }
-//    }
 
 
-    //查询标准化的配置信息公共字段
-    public void getStandardConfigData() throws SQLException {
-//        String query = "SELECT equipment, custom_field FROM yanzheng_config WHERE type='公共'";
-//        Statement statement = connection.createStatement();
-//        ResultSet resultSet = statement.executeQuery(query);
-//        while (resultSet.next()) {
-//            String equipment = resultSet.getString("equipment");
-//            String customField = resultSet.getString("custom_field");
-//            if (!configData.containsKey(equipment)) {
-//                configData.put(equipment, new ArrayList<>());
-//            }
-//            configData.get(equipment).add(customField);
-//        }
-        String query = "SELECT standard_field, equipment, custom_field FROM yanzheng_config WHERE type='公共'";
-
-        Statement statement = connection.createStatement();
-        ResultSet resultSet = statement.executeQuery(query);
-        while (resultSet.next()) {
-            String standardField = resultSet.getString("standard_field");
-            String equipment = resultSet.getString("equipment");
-            String customField = resultSet.getString("custom_field");
-            if (!configData.containsKey(equipment)) {
-                configData.put(equipment, new HashMap<>());
-            }
-            Map<String, String> groupMap = configData.get(equipment);
-            groupMap.put(customField, standardField);
-        }
-
-    }
-
-    //查询标准化的配置信息自定义字段
-    public void getStandardConfigData(String equipmentName) throws SQLException {
-        String query = "SELECT standard_field, equipment, custom_field FROM yanzheng_config WHERE type='自定义' and equipment like '" + equipmentName + "%'";
-
-            Statement statement = connection.createStatement();
-            ResultSet resultSet = statement.executeQuery(query);
-            while (resultSet.next()) {
-                String standardField = resultSet.getString("standard_field");
-                String equipment = resultSet.getString("equipment");
-                String customField = resultSet.getString("custom_field");
-                String[] equipmentArray = equipment.split("_");
-                String groupKey = equipmentArray[0];
-                if (!resultMap.containsKey(groupKey)) {
-                    resultMap.put(groupKey, new HashMap<>());
-                }
-                Map<String, String> groupMap = resultMap.get(groupKey);
-                groupMap.put(customField, standardField);
-            }
-    }
-
-
-    protected abstract void doProcess(T data, String path, Map<String, Map<String, String>> configData) throws Exception;
+    protected abstract void doProcess(T data, String path) throws Exception;
 }
