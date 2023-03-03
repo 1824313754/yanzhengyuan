@@ -2,6 +2,7 @@ package com;
 
 import base.AbstractFtpFileProcessor;
 import com.alibaba.fastjson.JSONObject;
+import org.apache.commons.lang.StringUtils;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -47,6 +48,9 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
             Map<String, String> firstMap = configData.get(first);
             for (JSONObject jsonObject : data) {
                 JSONObject standardJson = new JSONObject();
+                //定义2个数组温度和电压
+                List<String> temperature = new ArrayList<>();
+                List<String> voltage = new ArrayList<>();
                 //公共字段映射
                 for (Map.Entry<String, String> entry : firstMap.entrySet()) {
                     //获取标准化字段公共部分
@@ -71,6 +75,76 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
                         standardJson.put(standardField, equipmentFieldValue);
                     }
                 }
+                if (!standardJson.containsKey("cellvoltMAX")) {
+                    //获取jsonObject中包含不区分大小写的v，且包含不区分大小写的max或high,且不包含不区分大小写的T的key,且不包含不区分大小写的no的key
+                    List<String> voltageMax = jsonObject.keySet().stream().filter(s -> s.toLowerCase().contains("vo") && (s.toLowerCase().contains("max") || s.toLowerCase().contains("high"))&&!s.toLowerCase().contains("no")).collect(Collectors.toList());
+                    //若voltageMax的值为1，说明只有一个最大电压，直接获取最大电压的值
+                    if (voltageMax.size() == 1) {
+                        standardJson.put("cellvoltMAX", jsonObject.get(voltageMax.get(0)));
+                    }
+                }
+                if (!standardJson.containsKey("cellvoltMIN")) {
+                    //获取jsonObject中包含不区分大小写的v，且包含不区分大小写的min,且不包含不区分大小写的T的key
+                    List<String> voltageMin = jsonObject.keySet().stream().filter(s -> s.toLowerCase().contains("vo") && (s.toLowerCase().contains("min") || s.toLowerCase().contains("low"))&&!s.toLowerCase().contains("no")).collect(Collectors.toList());
+                    //若voltageMin的值为1，说明只有一个最小电压，直接获取最小电压的值
+                    if (voltageMin.size() == 1) {
+                        standardJson.put("cellvoltMIN", jsonObject.get(voltageMin.get(0)));
+                    }
+                }
+                //温度
+                if (!standardJson.containsKey("TemperatureMAX")) {
+                    //获取jsonObject中包含不区分大小写的t，且包含不区分大小写的max或high,且不包含不区分大小写的V的key
+                    List<String> temperatureMax = jsonObject.keySet().stream().filter(s -> s.toLowerCase().contains("tem") && (s.toLowerCase().contains("max") || s.toLowerCase().contains("high"))&&!s.toLowerCase().contains("no")).collect(Collectors.toList());
+                    //若temperatureMax的值为1，说明只有一个最大温度，直接获取最大温度的值
+                    if (temperatureMax.size() == 1) {
+                        standardJson.put("TemperatureMAX", jsonObject.get(temperatureMax.get(0)));
+                    }
+                }
+                if (!standardJson.containsKey("TemperatureMIN")) {
+                    //获取jsonObject中包含不区分大小写的t，且包含不区分大小写的min或low,且不包含不区分大小写的V的key
+                    List<String> temperatureMin = jsonObject.keySet().stream().filter(s -> s.toLowerCase().contains("tem") && (s.toLowerCase().contains("min") || s.toLowerCase().contains("low"))&&!s.toLowerCase().contains("no") &&!s.toLowerCase().contains("slow")).collect(Collectors.toList());
+                    //若temperatureMin的值为1，说明只有一个最小温度，直接获取最小温度的值
+                    if (temperatureMin.size() == 1) {
+                        standardJson.put("TemperatureMIN", jsonObject.get(temperatureMin.get(0)));
+                    }
+                }
+                //判断standardJson中是否有cellvolt加数字的key，如果有则将其按照数字放到指定的数组的下标中
+                for (Map.Entry<String, Object> entry : standardJson.entrySet()) {
+                    String key = entry.getKey();
+                    Object value = entry.getValue();
+                    if (key.toLowerCase().contains("cellvolt")) {
+                        String substring = key.substring(8);
+                        if (StringUtils.isNumeric(substring)) {
+                            int index = Integer.parseInt(substring);
+                            if (voltage.size() < index + 1) {
+                                for (int i = voltage.size(); i < index + 1; i++) {
+                                    voltage.add(null);
+                                }
+                            }
+                            voltage.set(index, value.toString());
+                        }
+                    }
+                    if (key.toLowerCase().contains("temperature")) {
+                        String substring = key.substring(11);
+                        if (StringUtils.isNumeric(substring)) {
+                            int index = Integer.parseInt(substring);
+                            if (temperature.size() < index + 1) {
+                                for (int i = temperature.size(); i < index + 1; i++) {
+                                    temperature.add(null);
+                                }
+                            }
+                            temperature.set(index, value.toString());
+                        }
+                    }
+                }
+
+
+
+
+
+
+
+
                 System.out.println(standardJson);
             }
         }
@@ -117,6 +191,8 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
         }
         return resultMap;
     }
+
+
 
 
 }
