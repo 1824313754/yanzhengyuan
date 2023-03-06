@@ -8,6 +8,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject>> {
@@ -41,7 +43,8 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
 
         // 对于data中的每个JSONObject对象，都将其标准化为一个新的JSONObject对象standardizedJson，并将其添加到result集合中
         for (JSONObject jsonObject : data) {
-            JSONObject standardizedJson = standardizeJsonObject(jsonObject, matchingConfigKeys, customConfig);
+//            System.out.println("正在处理的数据：" + jsonObject);
+            JSONObject standardizedJson = standardizeJsonObject(jsonObject, matchingConfigKeys, customConfig,path);
             result.add(standardizedJson);
         }
 
@@ -67,25 +70,12 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
         return matchingConfigKeys;
     }
 
-    // getCustomConfigData方法，获取与matchingConfigKeys匹配的自定义配置数据，并将这些数据保存在一个Map类型的集合customConfig中
-    private Map<String, String> getCustomConfigData(Set<String> matchingConfigKeys) throws SQLException {
-        Map<String, String> customConfig = new HashMap<>();
-        String query = "SELECT standard_field, custom_field FROM yanzheng_config WHERE type='自定义' and equipment IN (" + matchingConfigKeys.stream().map(s -> "'" + s + "'").collect(Collectors.joining(",")) + ")";
-        try (Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery(query)) {
-            while (resultSet.next()) {
-                String standardField = resultSet.getString("standard_field");
-                String customField = resultSet.getString("custom_field");
-                customConfig.put(customField, standardField);
-            }
-        }
-        return customConfig;
-    }
-
     // standardizeJsonObject方法，将一个JSONObject对象标准化为一个新的JSONObject对象
-    private JSONObject standardizeJsonObject(JSONObject jsonObject, Set<String> matchingConfigKeys, Map<String, String> customConfig) {
+    private JSONObject standardizeJsonObject(JSONObject jsonObject, Set<String> matchingConfigKeys, Map<String, String> customConfig,String path) {
         // 创建一个新的JSONObject对象standardizedJson
         JSONObject standardizedJson = new JSONObject();
+        //文件绝对路径添加
+        standardizedJson.put("path",path);
         // 将data中JSONObject对象的公共字段添加到standardizedJson中
         Map<String, String> firstMap = configData.get(matchingConfigKeys.iterator().next());
         for (Map.Entry<String, String> entry : firstMap.entrySet()) {
@@ -112,39 +102,43 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
         keysAndStrings.put("TemperatureMAX", Arrays.asList(Arrays.asList("tem"), Arrays.asList("no"), Arrays.asList("max", "high")));
         keysAndStrings.put("TemperatureMIN", Arrays.asList(Arrays.asList("tem"), Arrays.asList("no", "slow"), Arrays.asList("min", "low")));
         addStandardizedJsonByKeys(standardizedJson, jsonObject, keysAndStrings);
-
-        // 打印standardizedJson
-        System.out.println(standardizedJson);
-
+        addTemperatureByNumber(standardizedJson, jsonObject, "temperature","temp");
+        addTemperatureByNumber(standardizedJson, jsonObject, "cellvolt","vol");
+       //定义2个List集合，用于保存温度和电压数据
+        List<String> temperature = new ArrayList<>();
+        List<String> voltage = new ArrayList<>();
         // 将standardizedJson中的温度和电压数据保存到temperature和voltage集合中
-        String[] substringsToProcess = {"cellvolt", "temperature"};
-        List<List<String>> valuesToStore = new ArrayList<>(Arrays.asList(new ArrayList<>(), new ArrayList<>()));
         for (Map.Entry<String, Object> entry : standardizedJson.entrySet()) {
             String key = entry.getKey();
             Object value = entry.getValue();
-
-            if (Arrays.stream(substringsToProcess).anyMatch(key.toLowerCase()::contains)) {
-                for (int i = 0; i < substringsToProcess.length; i++) {
-                    String substring = substringsToProcess[i];
-                    if (key.toLowerCase().contains(substring)) {
-                        String indexString = key.substring(substring.length());
-                        if (StringUtils.isNumeric(indexString)) {
-                            int index = Integer.parseInt(indexString);
-                            if (valuesToStore.get(i).size() < index + 1) {
-                                for (int j = valuesToStore.get(i).size(); j < index + 1; j++) {
-                                    valuesToStore.get(i).add(null);
-                                }
-                            }
-                            valuesToStore.get(i).set(index, value.toString());
-                        }
-                    }
-                }
-            }
+            addValueToListAtIndex(key, value, temperature, "temperature");
+            addValueToListAtIndex(key, value, voltage, "cellvolt");
+            //将temperature和voltage集合中的数据转换为字符串，并添加到standardizedJson中
         }
-
+        standardizedJson.put("temperature", temperature.toString());
+        standardizedJson.put("cellvolt", voltage.toString());
         // 返回标准化后的JSONObject对象
         return standardizedJson;
     }
+    public static void addValueToListAtIndex(String key, Object value, List<String> list, String prefix) {
+        String regex = prefix + "(\\d+)";
+        Pattern pattern = Pattern.compile(regex);
+        Matcher matcher = pattern.matcher(key);
+
+        if (matcher.matches()) {
+            int index = Integer.parseInt(matcher.group(1)) - 1;
+            if (index >= 0) {
+                if (list.size() < index + 1) {
+                    for (int i = list.size(); i < index + 1; i++) {
+                        list.add(null);
+                    }
+                }
+                list.set(index, value.toString());
+            }
+        }
+    }
+
+
 
     // getStandardConfigData方法，获取公共字段配置信息并保存在configData集合中
     private void getStandardConfigData() throws SQLException {
@@ -158,6 +152,20 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
                 configData.computeIfAbsent(equipment, k -> new HashMap<>()).put(customField, standardField);
             }
         }
+    }
+    // getCustomConfigData方法，获取与matchingConfigKeys匹配的自定义配置数据，并将这些数据保存在一个Map类型的集合customConfig中
+    private Map<String, String> getCustomConfigData(Set<String> matchingConfigKeys) throws SQLException {
+        Map<String, String> customConfig = new HashMap<>();
+        String query = "SELECT standard_field, custom_field FROM yanzheng_config WHERE type='自定义' and equipment IN (" + matchingConfigKeys.stream().map(s -> "'" + s + "'").collect(Collectors.joining(",")) + ")";
+        try (Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(query)) {
+            while (resultSet.next()) {
+                String standardField = resultSet.getString("standard_field");
+                String customField = resultSet.getString("custom_field");
+                customConfig.put(customField, standardField);
+            }
+        }
+        return customConfig;
     }
 
     // addStandardizedJsonByKeys方法，将data中的某些字段添加到standardizedJson中
@@ -181,6 +189,28 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
             }
         }
     }
+
+
+    public  void addTemperatureByNumber(JSONObject standardizedJson, JSONObject jsonObject, String temperatureKeyPrefix, String temperatureKeyAlt) {
+        for (String key : standardizedJson.keySet()) {
+            if (key.matches(temperatureKeyPrefix + "\\d+")) {
+                return;
+            }
+        }
+        Pattern pattern = Pattern.compile(".*CAN.*" + temperatureKeyAlt + "\\D*(\\d+).*");
+        for (String key : jsonObject.keySet()) {
+            Matcher matcher = pattern.matcher(key);
+            if (matcher.matches()) {
+                String number = matcher.group(1);
+                String temperatureKey = temperatureKeyPrefix + number;
+                if (!standardizedJson.containsKey(temperatureKey)) {
+                    standardizedJson.put(temperatureKey, jsonObject.get(key));
+                }
+            }
+        }
+    }
+
+
 }
 
 
