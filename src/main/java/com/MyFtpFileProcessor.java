@@ -1,16 +1,20 @@
 package com;
 
 import base.AbstractFtpFileProcessor;
+import bean.StandardizedField;
 import com.alibaba.fastjson.JSONObject;
-import org.apache.commons.lang.StringUtils;
+import utils.ClickHouseUtils;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.lang.reflect.Field;
+import java.sql.*;
+import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.Date;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
+import static bean.StandardizedField.jsonToBean;
 
 public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject>> {
     // 定义一个List类型的集合result，用于保存标准化后的JSONObject对象
@@ -35,7 +39,8 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
 
         // 如果matchingConfigKeys为空，则表示没有设备匹配，直接返回
         if (matchingConfigKeys.isEmpty()) {
-            return;
+            //抛异常，终止程序
+            throw new Exception("没有匹配的设备");
         }
 
         // 使用getCustomConfigData方法获取与matchingConfigKeys匹配的自定义配置数据，并将这些数据保存在一个Map类型的集合customConfig中
@@ -48,34 +53,83 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
             result.add(standardizedJson);
         }
 
-        // 将result集合中的数据保存到数据库中
         saveBatch();
     }
 
     // saveBatch方法，将result集合中的数据打印出来并清空result集合
-    private void saveBatch() {
-        result.forEach(System.out::println);
+    private  void saveBatch() throws SQLException, IllegalAccessException {
+        Connection conn = ClickHouseUtils.getConnection();
+        // 准备 SQL 语句和参数
+        String sql = "INSERT INTO " + ClickHouseUtils.getTableName() + " VALUES (?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+        // 创建 PreparedStatement 对象
+        PreparedStatement pstmt = conn.prepareStatement(sql);
+        //循环遍历result集合
+        for (JSONObject jsonObject : result) {
+            //打印result集合中的数据
+            StandardizedField standardizedField = jsonToBean(jsonObject);
+            Field[] fields = standardizedField.getClass().getDeclaredFields();
+            for (int i = 0; i < fields.length; i++) {
+                Field field = fields[i];
+                field.setAccessible(true);
+                Object value = field.get(standardizedField);
+                pstmt.setString(i + 1, value == null ? null : value.toString());
+            }
+            pstmt.addBatch();
+        }
+        pstmt.executeBatch();
+        pstmt.close();
+        conn.close();
         result.clear();
+//        result.forEach(System.out::println);
     }
 
-    // findMatchingConfigKeys方法，找到与excelHeaders匹配的配置数据的key，并将这些key保存在一个Set集合matchingConfigKeys中
+    /**
+     * findMatchingConfigKeys方法，找到与excelHeaders匹配的配置数据的key，并将这些key保存在一个Set集合matchingConfigKeys中
+     * 若没有全部匹配，则返回最接近的匹配，打印出缺少的字段
+     * @param excelHeaders
+     * @return
+     */
     private Set<String> findMatchingConfigKeys(Set<String> excelHeaders) {
         Set<String> matchingConfigKeys = new HashSet<>();
+        int maxMatchCount = 0;
+        String maxMatchKey = null;
+        Set<String> maxMatchKeyMissingElements = new HashSet<>();
         for (Map.Entry<String, Map<String, String>> entry : configData.entrySet()) {
-            Set<String> configValueKeys = entry.getValue().keySet();
-            if (excelHeaders.containsAll(configValueKeys)) {
-                matchingConfigKeys.add(entry.getKey());
+            Set<String> configValueKeys = entry.getValue().keySet().stream().filter(key -> !key.equals("")).collect(Collectors.toSet());
+            int matchCount = 0;
+            Set<String> missingElements = new HashSet<>(configValueKeys);
+            missingElements.removeAll(excelHeaders);
+            for (String header : excelHeaders) {
+                if (configValueKeys.contains(header)) {
+                    matchCount++;
+                    missingElements.remove(header);
+                }
             }
+            if (matchCount == configValueKeys.size()) {
+                matchingConfigKeys.add(entry.getKey());
+            } else if (matchCount > maxMatchCount) {
+                maxMatchCount = matchCount;
+                maxMatchKey = entry.getKey();
+                maxMatchKeyMissingElements = missingElements;
+            }
+        }
+        if (matchingConfigKeys.isEmpty() && maxMatchKey != null) {
+            System.out.println("No exact match found, closest match is key " + maxMatchKey +
+                    " with " + maxMatchCount + " matching elements and missing elements: " +
+                    maxMatchKeyMissingElements);
         }
         return matchingConfigKeys;
     }
+
 
     // standardizeJsonObject方法，将一个JSONObject对象标准化为一个新的JSONObject对象
     private JSONObject standardizeJsonObject(JSONObject jsonObject, Set<String> matchingConfigKeys, Map<String, String> customConfig,String path) {
         // 创建一个新的JSONObject对象standardizedJson
         JSONObject standardizedJson = new JSONObject();
+        standardizedJson.put("path", path.substring(0, path.lastIndexOf("/")));
         //文件绝对路径添加
-        standardizedJson.put("path",path);
+        standardizedJson.put("fileName",path.split("/")[path.split("/").length-1]);
         // 将data中JSONObject对象的公共字段添加到standardizedJson中
         Map<String, String> firstMap = configData.get(matchingConfigKeys.iterator().next());
         for (Map.Entry<String, String> entry : firstMap.entrySet()) {
@@ -117,6 +171,8 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
         }
         standardizedJson.put("temperature", temperature.toString());
         standardizedJson.put("cellvolt", voltage.toString());
+        //放入当前时间，格式为yyyy-MM-dd HH:mm:ss
+        standardizedJson.put("processTime",new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
         // 返回标准化后的JSONObject对象
         return standardizedJson;
     }

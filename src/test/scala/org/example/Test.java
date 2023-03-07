@@ -16,28 +16,33 @@ import java.util.Properties;
 
 public class Test {
     public static void main(String[] args) {
-        //定义一个数组
-        List<String> voltage = new ArrayList<>();
-        JSONObject standardJson = new JSONObject();
-        standardJson.put("cellVolt1", "1");
-        standardJson.put("cellVolt3", "3");
-        for (Map.Entry<String, Object> entry : standardJson.entrySet()) {
-            String key = entry.getKey();
-            Object value = entry.getValue();
-            if (key.toLowerCase().contains("cellvolt")) {
-                String substring = key.substring(8);
-                if (StringUtils.isNumeric(substring)) {
-                    int index = Integer.parseInt(substring);
-                    if (voltage.size() < index + 1) {
-                        for (int i = voltage.size(); i < index + 1; i++) {
-                            voltage.add(null);
-                        }
-                    }
-                    voltage.set(index, value.toString());
-                }
-            }
-        }
-        System.out.println(voltage);
+//        //定义一个数组
+//        List<String> voltage = new ArrayList<>();
+//        JSONObject standardJson = new JSONObject();
+//        standardJson.put("cellVolt1", "1");
+//        standardJson.put("cellVolt3", "3");
+//        for (Map.Entry<String, Object> entry : standardJson.entrySet()) {
+//            String key = entry.getKey();
+//            Object value = entry.getValue();
+//            if (key.toLowerCase().contains("cellvolt")) {
+//                String substring = key.substring(8);
+//                if (StringUtils.isNumeric(substring)) {
+//                    int index = Integer.parseInt(substring);
+//                    if (voltage.size() < index + 1) {
+//                        for (int i = voltage.size(); i < index + 1; i++) {
+//                            voltage.add(null);
+//                        }
+//                    }
+//                    voltage.set(index, value.toString());
+//                }
+//            }
+//        }
+//        System.out.println(voltage);
+        String path = "/Users/Administrator/test.txt";
+        String s = path.split("/")[path.split("/").length - 1];
+        //取出路径
+        String path1 = path.substring(0, path.lastIndexOf("/"));
+        System.out.println(path1+"   "+s);
     }
 
 //        public static void main(String[] args) throws SQLException, ClassNotFoundException {
