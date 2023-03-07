@@ -17,9 +17,8 @@ import java.util.stream.Collectors;
 import static bean.StandardizedField.jsonToBean;
 
 public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject>> {
-    // 定义一个List类型的集合result，用于保存标准化后的JSONObject对象
-    private final List<JSONObject> result = new ArrayList<>();
-    // 定义一个Map类型的集合configData，用于保存公共字段配置信息
+    // 定义一个Map类型的集合,用于存放正则表达式匹配出来的字段名和字段值
+    private final Map<String, String> regexMap = new HashMap<>();
     private final Map<String, Map<String, String>> configData = new HashMap<>();
 
     // 构造函数，接收一个Properties类型的参数config，并抛出SQLException异常
@@ -32,10 +31,17 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
     // doProcess方法，接收两个参数：一个List类型的数据data和一个String类型的路径path。该方法还抛出Exception异常。
     @Override
     protected void doProcess(List<JSONObject> data, String path) throws Exception {
+        // 定义一个List类型的集合result，用于保存标准化后的JSONObject对象
+        List<JSONObject> result = new ArrayList<>();
         // 从data中获取到一个JSONObject对象的Set集合excelHeaders
         Set<String> excelHeaders = data.get(0).keySet();
         // 使用findMatchingConfigKeys方法找到与excelHeaders匹配的配置数据的key，并将这些key保存在一个Set集合matchingConfigKeys中
         Set<String> matchingConfigKeys = findMatchingConfigKeys(excelHeaders);
+        matchJsonObjectKey(data.get(0), "cellvoltMAX", ".*?(high|max).*?(volt|cell).*|.*?(volt|cell).*?(high|max).*");
+        matchJsonObjectKey(data.get(0),"cellvoltMIN", ".*?(low|min).*?(volt|cell).*|.*?(volt|cell).*?(low|min).*");
+        matchJsonObjectKey(data.get(0),"temperatureMAX", ".*?(high|max).*?(temp).*|.*?(temp).*?(high|max).*");
+        matchJsonObjectKey(data.get(0),"temperatureMIN", ".*?(low|min).*?(temp).*|.*?(temp).*?(low|min).*");
+
 
         // 如果matchingConfigKeys为空，则表示没有设备匹配，直接返回
         if (matchingConfigKeys.isEmpty()) {
@@ -45,19 +51,28 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
 
         // 使用getCustomConfigData方法获取与matchingConfigKeys匹配的自定义配置数据，并将这些数据保存在一个Map类型的集合customConfig中
         Map<String, String> customConfig = getCustomConfigData(matchingConfigKeys);
+        //定义一个map存放自定义的字段映射
+        Map<String, String> customMap = new HashMap<>();
+        for (Map.Entry<String, String> entry : customConfig.entrySet()) {
+            String standardField = entry.getValue();
+            String equipmentField = entry.getKey();
+            if(excelHeaders.contains(equipmentField)){
+                customMap.put(equipmentField,standardField);
+            }
+        }
 
         // 对于data中的每个JSONObject对象，都将其标准化为一个新的JSONObject对象standardizedJson，并将其添加到result集合中
         for (JSONObject jsonObject : data) {
 //            System.out.println("正在处理的数据：" + jsonObject);
-            JSONObject standardizedJson = standardizeJsonObject(jsonObject, matchingConfigKeys, customConfig,path);
+            JSONObject standardizedJson = standardizeJsonObject(jsonObject, matchingConfigKeys, customMap,path);
             result.add(standardizedJson);
         }
-
-        saveBatch();
+        saveBatch(result);
+        regexMap.clear();
     }
 
     // saveBatch方法，将result集合中的数据打印出来并清空result集合
-    private  void saveBatch() throws SQLException, IllegalAccessException {
+    private  void saveBatch(List<JSONObject> result) throws SQLException, IllegalAccessException {
         Connection conn = ClickHouseUtils.getConnection();
         // 准备 SQL 语句和参数
         String sql = "INSERT INTO " + ClickHouseUtils.getTableName() + " VALUES (?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
@@ -80,7 +95,6 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
         pstmt.executeBatch();
         pstmt.close();
         conn.close();
-        result.clear();
 //        result.forEach(System.out::println);
     }
 
@@ -124,7 +138,7 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
 
 
     // standardizeJsonObject方法，将一个JSONObject对象标准化为一个新的JSONObject对象
-    private JSONObject standardizeJsonObject(JSONObject jsonObject, Set<String> matchingConfigKeys, Map<String, String> customConfig,String path) {
+    private JSONObject standardizeJsonObject(JSONObject jsonObject, Set<String> matchingConfigKeys, Map<String, String> customMap,String path) {
         // 创建一个新的JSONObject对象standardizedJson
         JSONObject standardizedJson = new JSONObject();
         standardizedJson.put("path", path.substring(0, path.lastIndexOf("/")));
@@ -140,7 +154,7 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
         }
 
         // 使用自定义配置数据customConfig来将data中的自定义字段添加到standardizedJson中
-        for (Map.Entry<String, String> entry : customConfig.entrySet()) {
+        for (Map.Entry<String, String> entry : customMap.entrySet()) {
             String standardField = entry.getValue();
             String equipmentField = entry.getKey();
             Object equipmentFieldValue = jsonObject.get(equipmentField);
@@ -148,14 +162,20 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
                 standardizedJson.put(standardField, equipmentFieldValue);
             }
         }
-
+        //若standardizedJson的key没有cellvoltMAX，cellvoltMIN，TemperatureMAX，TemperatureMIN则分别使用正则表达式寻找jsonObject的key
+        if (!standardizedJson.containsKey("cellvoltMAX")) {
+            standardizedJson.put("cellvoltMAX",jsonObject.getString(regexMap.get("cellvoltMAX")));
+        }
+        if (!standardizedJson.containsKey("cellvoltMIN")) {
+            standardizedJson.put("cellvoltMIN",jsonObject.getString(regexMap.get("cellvoltMIN")));
+        }
+        if (!standardizedJson.containsKey("TemperatureMAX")) {
+            standardizedJson.put("TemperatureMAX",jsonObject.getString(regexMap.get("TemperatureMAX")));
+        }
+        if (!standardizedJson.containsKey("TemperatureMIN")) {
+            standardizedJson.put("TemperatureMIN",jsonObject.getString(regexMap.get("TemperatureMIN")));
+        }
         // 使用addStandardizedJsonByKeys方法将data中的某些字段添加到standardizedJson中
-        Map<String, List<List<String>>> keysAndStrings = new HashMap<>();
-        keysAndStrings.put("cellvoltMAX", Arrays.asList(Arrays.asList("vo", "cel"), Arrays.asList("no"), Arrays.asList("max", "high")));
-        keysAndStrings.put("cellvoltMIN", Arrays.asList(Arrays.asList("vo", "cel"), Arrays.asList("no", "slow"), Arrays.asList("min", "low")));
-        keysAndStrings.put("TemperatureMAX", Arrays.asList(Arrays.asList("tem"), Arrays.asList("no"), Arrays.asList("max", "high")));
-        keysAndStrings.put("TemperatureMIN", Arrays.asList(Arrays.asList("tem"), Arrays.asList("no", "slow"), Arrays.asList("min", "low")));
-        addStandardizedJsonByKeys(standardizedJson, jsonObject, keysAndStrings);
         addTemperatureByNumber(standardizedJson, jsonObject, "temperature","temp");
         addTemperatureByNumber(standardizedJson, jsonObject, "cellvolt","vol");
        //定义2个List集合，用于保存温度和电压数据
@@ -167,7 +187,6 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
             Object value = entry.getValue();
             addValueToListAtIndex(key, value, temperature, "temperature");
             addValueToListAtIndex(key, value, voltage, "cellvolt");
-            //将temperature和voltage集合中的数据转换为字符串，并添加到standardizedJson中
         }
         standardizedJson.put("temperature", temperature.toString());
         standardizedJson.put("cellvolt", voltage.toString());
@@ -176,7 +195,7 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
         // 返回标准化后的JSONObject对象
         return standardizedJson;
     }
-    public static void addValueToListAtIndex(String key, Object value, List<String> list, String prefix) {
+    public  void addValueToListAtIndex(String key, Object value, List<String> list, String prefix) {
         String regex = prefix + "(\\d+)";
         Pattern pattern = Pattern.compile(regex);
         Matcher matcher = pattern.matcher(key);
@@ -224,29 +243,6 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
         return customConfig;
     }
 
-    // addStandardizedJsonByKeys方法，将data中的某些字段添加到standardizedJson中
-    public static void addStandardizedJsonByKeys(JSONObject standardizedJson, JSONObject jsonObject, Map<String, List<List<String>>> keysAndStrings) {
-        for (Map.Entry<String, List<List<String>>> entry : keysAndStrings.entrySet()) {
-            String key = entry.getKey();
-            List<String> mustMatchStrings = entry.getValue().get(0);
-            List<String> notMatchStrings = entry.getValue().get(1);
-            List<String> containsStrings = entry.getValue().get(2);
-
-            if (!standardizedJson.containsKey(key)) {
-                List<String> filteredKeys = jsonObject.keySet().stream()
-                        .filter(s -> mustMatchStrings.stream().anyMatch(s.toLowerCase()::contains))
-                        .filter(s -> notMatchStrings.stream().noneMatch(s.toLowerCase()::contains))
-                        .filter(s -> containsStrings.stream().anyMatch(s.toLowerCase()::contains))
-                        .collect(Collectors.toList());
-
-                if (filteredKeys.size() == 1) {
-                    standardizedJson.put(key, jsonObject.get(filteredKeys.get(0)));
-                }
-            }
-        }
-    }
-
-
     public  void addTemperatureByNumber(JSONObject standardizedJson, JSONObject jsonObject, String temperatureKeyPrefix, String temperatureKeyAlt) {
         for (String key : standardizedJson.keySet()) {
             if (key.matches(temperatureKeyPrefix + "\\d+")) {
@@ -265,6 +261,27 @@ public class MyFtpFileProcessor extends AbstractFtpFileProcessor<List<JSONObject
             }
         }
     }
+
+    //匹配
+    public  String matchJsonObjectKey(JSONObject jsonObj,String keyName,String patternStr) {
+        Pattern pattern = Pattern.compile(patternStr);
+        String shortestKey = null;
+        int shortestLength = Integer.MAX_VALUE;
+        for (String key : jsonObj.keySet()) {
+            Matcher matcher = pattern.matcher(key.toLowerCase());
+            if (matcher.find()) {
+                String matchKey = matcher.group();
+                if (matchKey.length() < shortestLength) {
+                    shortestKey = key;
+                    shortestLength = matchKey.length();
+                }
+            }
+        }
+        regexMap.put(keyName, patternStr);
+        return shortestKey;
+    }
+
+
 
 
 }

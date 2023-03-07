@@ -23,7 +23,7 @@ public class CsvDataReader implements DataReader<List<JSONObject>> {
                 String[] values = line.split(",");
                 JSONObject jsonObject = new JSONObject();
                 for (int i = 0; i < headers.length; i++) {
-                    String value = i < values.length ? values[i] : null; // 防止数组越界，缺失值用 null 表示
+                    String value = i < values.length ? values[i] : " "; // 防止数组越界，缺失值用空格表示
 //                    headers[i] = headers[i].replaceAll("\\(.*\\)", "");
                     jsonObject.put(headers[i].trim(), value);
                 }

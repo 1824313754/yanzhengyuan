@@ -66,11 +66,14 @@ public abstract class AbstractFtpFileProcessor<T> {
                             insertProcessedFilePath(filePath, true);
                         }
                     } catch (Exception e) {
+                        System.out.println(e.getMessage());
                         insertProcessedFilePath(filePath, false);
                     }
                     outputStream.close();
                 }
             }
+        } catch (Exception e) {
+            e.printStackTrace();
         } finally {
             ftpClient.disconnect();
             connection.close();

@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class Test {
     public static void main(String[] args) {
@@ -38,11 +40,31 @@ public class Test {
 //            }
 //        }
 //        System.out.println(voltage);
-        String path = "/Users/Administrator/test.txt";
-        String s = path.split("/")[path.split("/").length - 1];
-        //取出路径
-        String path1 = path.substring(0, path.lastIndexOf("/"));
-        System.out.println(path1+"   "+s);
+
+            JSONObject jsonObject = new JSONObject();
+        jsonObject.put("Aux. max Volt","1");
+        jsonObject.put("Au max Volt","1");
+
+        String shortestKeyWithHighOrMaxContainingVoltOrCell = matchJsonObjectKey(jsonObject);
+        System.out.println(shortestKeyWithHighOrMaxContainingVoltOrCell);
+    }
+    public static String matchJsonObjectKey(JSONObject jsonObj) {
+        String patternStr = ".*?(high|max).*?(volt|cell).*|.*?(volt|cell).*?(high|max).*";
+        Pattern pattern = Pattern.compile(patternStr);
+        String shortestKey = null;
+        int shortestLength = Integer.MAX_VALUE;
+
+        for (String key : jsonObj.keySet()) {
+            Matcher matcher = pattern.matcher(key.toLowerCase());
+            if (matcher.find()) {
+                String matchKey = matcher.group();
+                if (matchKey.length() < shortestLength) {
+                    shortestKey = key;
+                    shortestLength = matchKey.length();
+                }
+            }
+        }
+        return shortestKey;
     }
 
 //        public static void main(String[] args) throws SQLException, ClassNotFoundException {
